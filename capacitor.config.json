@@ -1,0 +1,9 @@
+{
+  "appId": "com.stevenwilliams.multijobtaxcheck",
+  "appName": "Sorted",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#eef3ef"
+  }
+}
