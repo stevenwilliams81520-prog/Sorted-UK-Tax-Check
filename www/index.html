@@ -153,7 +153,18 @@ h2{font-size:1.05rem;margin:26px 0 8px}
   </section>
 
   
-<section class="guide" id="how-to-pay">
+  <section class="saves" id="noAdsBox" hidden>
+    <h2 id="noAdsTitle">Remove ads</h2>
+    <p class="hint" id="noAdsText">A one-off payment removes the ads for good. It isn’t a subscription.</p>
+    <div class="row" id="buyRow">
+      <button type="button" class="btn" id="buyBtn">Remove ads</button>
+      <button type="button" class="link" id="restoreBtn">Restore purchase</button>
+    </div>
+    <p class="hint" id="buyMsg" aria-live="polite"></p>
+    <p style="margin:6px 0 0"><button type="button" class="link del" id="adPrivacyBtn" hidden>Ad privacy settings</button></p>
+  </section>
+
+  <section class="guide" id="how-to-pay">
     <h2>How to pay tax you owe</h2>
     <p>With PAYE jobs you don’t send HMRC a bill yourself. HMRC works it out and tells you how to pay. Here’s what happens and what you can do.</p>
 
@@ -668,6 +679,116 @@ restoreStorage().then(function(){
 
   renderTop(); renderJobs(); calc(); setupStore();
 });
+</script>
+<script>
+/* ---------- ads and "remove ads" purchase (iPhone app only) ---------- */
+const CONFIG = {
+  revenueCatKey: "appl_REPLACE_WITH_REVENUECAT_PUBLIC_KEY",
+  productId: "sorted_remove_ads",
+  entitlement: "no_ads",
+  bannerId: "ca-app-pub-REPLACE/REPLACE",   // your AdMob banner ad unit ID
+  testAds: true                              // set to false for the App Store release
+};
+(async function(){
+  const Cap = window.Capacitor;
+  if (!Cap || !Cap.isNativePlatform || !Cap.isNativePlatform()) return;
+  const P = Cap.Plugins || {}, AdMob = P.AdMob, Purchases = P.Purchases;
+  const $ = id => document.getElementById(id);
+  const box = $("noAdsBox"), buyBtn = $("buyBtn"), restoreBtn = $("restoreBtn"), msg = $("buyMsg"), privBtn = $("adPrivacyBtn");
+  const TEST_BANNER = "ca-app-pub-3940256099942544/2934735716";
+  let product = null, adsShown = false, adsReady = false, owned = localStorage.getItem("sortedNoAds") === "1";
+
+  const setPad = h => { document.body.style.paddingBottom = h ? (h + 8) + "px" : ""; };
+  const ownsIt = ci => {
+    if (!ci) return false;
+    const act = (ci.entitlements && ci.entitlements.active) || {};
+    return !!act[CONFIG.entitlement] || (ci.allPurchasedProductIdentifiers || []).includes(CONFIG.productId);
+  };
+
+  async function startAds(){
+    if (!AdMob || adsShown || owned) return;
+    try {
+      if (!adsReady){
+        await AdMob.initialize({ initializeForTesting: CONFIG.testAds });
+        try {
+          const info = await AdMob.requestConsentInfo();
+          if (info && info.isConsentFormAvailable && info.status === "REQUIRED") await AdMob.showConsentForm();
+          privBtn.hidden = !(info && info.privacyOptionsRequirementStatus === "REQUIRED");
+        } catch(e){}
+        try {
+          const t = await AdMob.trackingAuthorizationStatus();
+          if (t && t.status === "notDetermined") await AdMob.requestTrackingAuthorization();
+        } catch(e){}
+        AdMob.addListener("bannerAdSizeChanged", size => setPad(size && size.height));
+        adsReady = true;
+      }
+      await AdMob.showBanner({ adId: CONFIG.testAds ? TEST_BANNER : CONFIG.bannerId, adSize: "ADAPTIVE_BANNER", position: "BOTTOM_CENTER", margin: 0, isTesting: CONFIG.testAds });
+      adsShown = true;
+    } catch(e){}
+  }
+  async function stopAds(){
+    try { if (AdMob && adsShown) await AdMob.removeBanner(); } catch(e){}
+    adsShown = false; setPad(0); privBtn.hidden = true;
+  }
+
+  function render(){
+    box.hidden = false;
+    if (owned){
+      $("noAdsTitle").textContent = "Ads removed";
+      $("noAdsText").textContent = "Thank you for supporting Sorted.";
+      $("buyRow").hidden = true;
+    } else {
+      $("noAdsTitle").textContent = "Remove ads";
+      $("noAdsText").textContent = "A one-off payment removes the ads for good. It isn’t a subscription.";
+      $("buyRow").hidden = false;
+      buyBtn.textContent = "Remove ads – " + (product && product.priceString ? product.priceString : "99p");
+      buyBtn.disabled = !product;
+      if (!product) msg.textContent = "Purchases aren’t available right now. Check your connection and reopen the app.";
+    }
+  }
+  function setOwned(yes){
+    owned = yes; persist("sortedNoAds", yes ? "1" : "0");
+    if (yes) stopAds(); else startAds();
+    render();
+  }
+
+  buyBtn.addEventListener("click", async ()=>{
+    if (!Purchases || !product) return;
+    buyBtn.disabled = true; msg.textContent = "";
+    try {
+      const r = await Purchases.purchaseStoreProduct({ product });
+      if (ownsIt(r && r.customerInfo)) setOwned(true);
+      else msg.textContent = "The purchase didn’t go through. You haven’t been charged.";
+    } catch(e){
+      const cancelled = e && (e.userCancelled || String(e.code) === "1");
+      msg.textContent = cancelled ? "" : "Something went wrong. You haven’t been charged. Please try again.";
+    }
+    buyBtn.disabled = !product;
+  });
+  restoreBtn.addEventListener("click", async ()=>{
+    if (!Purchases) return;
+    msg.textContent = "Checking your purchases…";
+    try {
+      const r = await Purchases.restorePurchases();
+      if (ownsIt(r && r.customerInfo)){ setOwned(true); msg.textContent = ""; }
+      else msg.textContent = "No previous purchase found for this Apple ID.";
+    } catch(e){ msg.textContent = "Couldn’t check your purchases. Please try again."; }
+  });
+  privBtn.addEventListener("click", async ()=>{
+    try { await AdMob.showPrivacyOptionsForm(); } catch(e){ try { await AdMob.showConsentForm(); } catch(e2){} }
+  });
+
+  if (Purchases){
+    try {
+      await Purchases.configure({ apiKey: CONFIG.revenueCatKey });
+      try { const r = await Purchases.getCustomerInfo(); owned = ownsIt(r && r.customerInfo) || owned; } catch(e){}
+      try { const r = await Purchases.getProducts({ productIdentifiers: [CONFIG.productId], type: "NON_SUBSCRIPTION" }); product = (r && r.products && r.products[0]) || null; } catch(e){}
+    } catch(e){}
+  }
+  persist("sortedNoAds", owned ? "1" : "0");
+  render();
+  if (!owned) startAds();
+})();
 </script>
 </body>
 </html>

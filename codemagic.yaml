@@ -4,13 +4,14 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: Berfau ASC       # change to the name of your App Store Connect API key in Codemagic
+      app_store_connect: Berfau ASC        # change to the name of your App Store Connect API key in Codemagic
     environment:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.stevenwilliams.multijobtaxcheck
       vars:
         APP_STORE_APPLE_ID: 6833427994           # change to the Apple ID number from App Store Connect
+        ADMOB_APP_ID: ca-app-pub-3940256099942544~1458002511   # Google's test app ID. Change to your AdMob app ID (has a ~ in it)
       node: 20
       xcode: latest
       cocoapods: default
@@ -31,6 +32,13 @@ workflows:
           /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" $PLIST || true
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" $PLIST
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationPortrait" $PLIST
+          # Google AdMob
+          /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string $ADMOB_APP_ID" $PLIST || /usr/libexec/PlistBuddy -c "Set :GADApplicationIdentifier $ADMOB_APP_ID" $PLIST
+          /usr/libexec/PlistBuddy -c "Add :NSUserTrackingUsageDescription string 'This lets the app show ads that are more relevant to you. You can remove ads completely with a one-off purchase.'" $PLIST || true
+          /usr/libexec/PlistBuddy -c "Delete :SKAdNetworkItems" $PLIST || true
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems array" $PLIST
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0 dict" $PLIST
+          /usr/libexec/PlistBuddy -c "Add :SKAdNetworkItems:0:SKAdNetworkIdentifier string cstr6suwn9.skadnetwork" $PLIST
       - name: Set up code signing
         script: xcode-project use-profiles
       - name: Set build number

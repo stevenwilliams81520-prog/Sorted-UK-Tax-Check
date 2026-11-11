@@ -2,14 +2,16 @@
   "name": "multi-job-tax-check",
   "version": "1.0.0",
   "private": true,
-  "description": "UK tax check for people with more than one job",
+  "description": "Sorted: UK Tax Check",
   "scripts": {
     "sync": "npx cap sync ios"
   },
   "dependencies": {
     "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
-    "@capacitor/preferences": "^7.0.0"
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor-community/admob": "~7.2.0",
+    "@revenuecat/purchases-capacitor": "~11.3.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.0.0",
